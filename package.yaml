@@ -47,7 +47,9 @@ library:
   dependencies:
   - containers
   - Diff
+  - megaparsec
   - text
+  - time
 
 executables:
   ledgerdiff:
@@ -78,6 +80,7 @@ tests:
     - hspec-expectations-pretty-diff
     - ledger-sak
     - neat-interpolation
+    - time
 
   doctest:
     main:                DocTest.hs

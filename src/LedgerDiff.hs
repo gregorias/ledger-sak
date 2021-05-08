@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-
 module LedgerDiff (
   diff,
   diffIO,
@@ -21,16 +19,16 @@ lines' :: Text -> [Text]
 lines' = T.split (== '\n')
 
 newtype EdHunkAppend = EdHunkAppend
-  { ehaDestLines :: NonEmpty Text
+  { _ehaDestLines :: NonEmpty Text
   }
 
 newtype EdHunkDelete = EdHunkDelete
-  { ehdOrigLines :: NonEmpty Text
+  { _ehdOrigLines :: NonEmpty Text
   }
 
 data EdHunkChange = EdHunkChange
-  { ehcOrigLines :: NonEmpty Text
-  , ehcDestLines :: NonEmpty Text
+  { _ehcOrigLines :: NonEmpty Text
+  , _ehcDestLines :: NonEmpty Text
   }
 
 data EdHunkType
@@ -156,7 +154,7 @@ edHunksToEdDiff ehs = T.intercalate "\n" $ edHunkToEdDiff <$> ehs
 --
 -- Outputs an ed-style diff.
 diff :: Text -> Text -> Text
-diff original new = (edHunksToEdDiff . diffToEdHunks $ diffResult)
+diff original new = edHunksToEdDiff . diffToEdHunks $ diffResult
  where
   (originalLines, newLines) = (lines' original, lines' new)
   diffResult :: [Diff Text] = getDiff originalLines newLines
