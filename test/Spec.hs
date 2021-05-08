@@ -1,6 +1,12 @@
 module Spec (main) where
 
 import Relude
+import Test.Hspec (SpecWith, hspec)
+import qualified Test.LedgerDiff
 
 main :: IO ()
-main = putStrLn "Test suite not yet implemented"
+main = hspec tests
+
+tests :: SpecWith ()
+tests = do
+  Test.LedgerDiff.tests

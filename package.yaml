@@ -33,6 +33,7 @@ default-extensions:
   TypeApplications
   UnicodeSyntax
   QuasiQuotes
+  OverloadedLists
   OverloadedStrings
 
 dependencies:
@@ -44,6 +45,7 @@ library:
   ghc-options:
   - -Wunused-packages
   dependencies:
+  - containers
   - Diff
   - text
 
@@ -71,6 +73,11 @@ tests:
     - -with-rtsopts=-N
     - -main-is Spec
     - -Wunused-packages
+    dependencies:
+    - hspec
+    - hspec-expectations-pretty-diff
+    - ledger-sak
+    - neat-interpolation
 
   doctest:
     main:                DocTest.hs
@@ -83,4 +90,3 @@ tests:
     dependencies:
     - doctest
     - ledger-sak
-    - relude

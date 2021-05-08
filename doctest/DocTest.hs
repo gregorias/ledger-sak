@@ -11,6 +11,7 @@ main =
     [ "-XNoImplicitPrelude"
     , "-XDerivingStrategies"
     , "-XGeneralizedNewtypeDeriving"
+    , "-XOverloadedLists"
     , "-XOverloadedStrings"
     , "-XTypeApplications"
     , "-XScopedTypeVariables"

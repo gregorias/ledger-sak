@@ -1,6 +1,6 @@
 module LedgerDiffMain (main) where
 
-import LedgerDiff (diff)
+import LedgerDiff (diffIO)
 import Options.Applicative (Parser, execParser, fullDesc, header, helper, info, metavar, progDesc, strArgument)
 import Relude
 
@@ -18,7 +18,7 @@ filePathsP =
 main :: IO ()
 main = do
   (FilePaths leftPath rightPath) <- execParser opts
-  putText =<< diff leftPath rightPath
+  putText =<< diffIO leftPath rightPath
  where
   opts =
     info

@@ -30,11 +30,12 @@ library
   hs-source-dirs:
       src
   default-extensions:
-      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedStrings
+      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedLists OverloadedStrings
   ghc-options: -Wunused-packages
   build-depends:
       Diff
     , base >=4.13 && <5
+    , containers
     , relude
     , text
   default-language: Haskell2010
@@ -46,7 +47,7 @@ executable ledgerdiff
   hs-source-dirs:
       ledgerdiff
   default-extensions:
-      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedStrings
+      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedLists OverloadedStrings
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is LedgerDiffMain -Wunused-packages
   build-depends:
       base >=4.13 && <5
@@ -63,7 +64,7 @@ test-suite doctest
   hs-source-dirs:
       doctest
   default-extensions:
-      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedStrings
+      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedLists OverloadedStrings
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is DocTest
   build-depends:
       base >=4.13 && <5
@@ -76,13 +77,18 @@ test-suite ledger-sak-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Test.LedgerDiff
       Paths_ledger_sak
   hs-source-dirs:
       test
   default-extensions:
-      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedStrings
+      DerivingStrategies GeneralisedNewtypeDeriving InstanceSigs LambdaCase MultiWayIf NoImplicitPrelude NumericUnderscores ScopedTypeVariables TupleSections TypeApplications UnicodeSyntax QuasiQuotes OverloadedLists OverloadedStrings
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is Spec -Wunused-packages
   build-depends:
       base >=4.13 && <5
+    , hspec
+    , hspec-expectations-pretty-diff
+    , ledger-sak
+    , neat-interpolation
     , relude
   default-language: Haskell2010
