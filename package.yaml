@@ -64,6 +64,7 @@ executables:
     dependencies:
     - ledger-sak
     - optparse-applicative
+    - text
 
 tests:
   ledger-sak-test:

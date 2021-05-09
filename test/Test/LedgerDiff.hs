@@ -2,7 +2,7 @@ module Test.LedgerDiff (
   tests,
 ) where
 
-import LedgerDiff (diff)
+import LedgerDiff (diff, diffLedgerText)
 import NeatInterpolation (trimming)
 import Relude
 import Test.Hspec (SpecWith, describe, it)
@@ -46,3 +46,32 @@ tests = do
                         ---
                         > ; ggg|]
         diff original new `shouldBe` edDiff
+
+    describe "diffLedgerText" $ do
+      -- A different result would have been preferable but Neovim is stubborn
+      -- about its inputs: https://github.com/neovim/neovim/issues/14522
+      it "Outputs a correctly formatted ed-style diff" $ do
+        let orig =
+              [trimming|; preamble
+                        ; orig
+
+                        P 2021/04/01 1.00 CHF USD
+                        P 2021/04/03 1.00 CHF USD
+                        |]
+            dest =
+              [trimming|; preamble
+                        ; dest
+
+                        P 2021/04/02 1.00 CHF USD|]
+            edDiff =
+              [trimming|2c2
+                        < ; orig
+                        ---
+                        > ; dest
+                        4,5c4
+                        < P 2021/04/01 1.00 CHF USD
+                        < P 2021/04/03 1.00 CHF USD
+                        ---
+                        > P 2021/04/02 1.00 CHF USD
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff

@@ -1,6 +1,7 @@
 module LedgerDiffMain (main) where
 
-import LedgerDiff (diffIO)
+import qualified Data.Text.IO as T
+import LedgerDiff (diffLedgerIO)
 import Options.Applicative (Parser, execParser, fullDesc, header, helper, info, metavar, progDesc, strArgument)
 import Relude
 
@@ -18,7 +19,14 @@ filePathsP =
 main :: IO ()
 main = do
   (FilePaths leftPath rightPath) <- execParser opts
-  putText =<< diffIO leftPath rightPath
+  eitherDiff <- diffLedgerIO leftPath rightPath
+  either
+    ( \err -> do
+        T.hPutStr stderr err
+        exitFailure
+    )
+    putText
+    eitherDiff
  where
   opts =
     info

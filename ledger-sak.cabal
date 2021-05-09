@@ -57,6 +57,7 @@ executable ledgerdiff
     , ledger-sak
     , optparse-applicative
     , relude
+    , text
   default-language: Haskell2010
 
 test-suite doctest
