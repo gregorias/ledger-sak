@@ -2,7 +2,7 @@ module Test.LedgerDiff (
   tests,
 ) where
 
-import LedgerDiff (diff, diffLedgerText)
+import LedgerDiff (diffLedgerText)
 import NeatInterpolation (trimming)
 import Relude
 import Test.Hspec (SpecWith, describe, it)
@@ -11,9 +11,10 @@ import Test.Hspec.Expectations.Pretty (shouldBe)
 tests :: SpecWith ()
 tests = do
   describe "Test.LedgerDiff" $ do
-    describe "diff" $ do
+    describe "diffLedgerText" $ do
       it "Outputs an empty diff on equal strings" $ do
-        diff "a" "a" `shouldBe` ""
+        diffLedgerText "a" "a" `shouldBe` Right ""
+
       it "Outputs a correctly formatted ed-style diff" $ do
         let original =
               [trimming|; aaa
@@ -45,9 +46,8 @@ tests = do
                         < ; GGG
                         ---
                         > ; ggg|]
-        diff original new `shouldBe` edDiff
+        diffLedgerText original new `shouldBe` Right edDiff
 
-    describe "diffLedgerText" $ do
       -- A different result would have been preferable but Neovim is stubborn
       -- about its inputs: https://github.com/neovim/neovim/issues/14522
       it "Outputs a correctly formatted ed-style diff" $ do
@@ -73,5 +73,64 @@ tests = do
                         < P 2021/04/03 1.00 CHF USD
                         ---
                         > P 2021/04/02 1.00 CHF USD
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff
+
+      it "Uses empty lines as buffers nr 1" $ do
+        let orig =
+              [trimming|
+                        2021-05-09 Coop L
+                            content CC
+
+                        2021-05-14 Coop L
+                            content CC
+                        |]
+            dest =
+              [trimming|
+                        2021-05-10 * Coop R
+                            content BCGE
+
+                        2021/05/14 Coop R
+                            content CC
+                        |]
+            edDiff =
+              [trimming|
+                        1,2c1,2
+                        < 2021-05-09 Coop L
+                        <     content CC
+                        ---
+                        > 2021-05-10 * Coop R
+                        >     content BCGE
+                        4c4
+                        < 2021-05-14 Coop L
+                        ---
+                        > 2021/05/14 Coop R
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff
+      it "Uses empty lines as buffers nr 2" $ do
+        let orig =
+              [trimming|
+                        P 2021/04/01 1.00 CHF USD
+
+                        P 2021/04/03 1.00 CHF USD
+                        |]
+            space = " "
+            dest =
+              [trimming|
+                        P 2021/04/01 1.00 CHF USD
+
+                        P 2021/04/02 1.00 CHF USD
+
+                        P 2021/04/04 1.00 CHF USD
+                        |]
+            edDiff =
+              [trimming|
+                        1a2,3
+                        >$space
+                        > P 2021/04/02 1.00 CHF USD
+                        3c5
+                        < P 2021/04/03 1.00 CHF USD
+                        ---
+                        > P 2021/04/04 1.00 CHF USD
                         |]
         diffLedgerText orig dest `shouldBe` Right edDiff
