@@ -1,6 +1,6 @@
 # Ledger Swiss Army Knife
 
-A collection of tools for working with [Ledger files](https://plaintextaccounting.org/)
+A collection of tools for working with [ledger files](https://plaintextaccounting.org/)
 (for now only one tool though).
 
 ## Tools
