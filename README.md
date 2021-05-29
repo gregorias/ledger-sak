@@ -10,9 +10,13 @@ A collection of tools for working with [ledger files](https://plaintextaccountin
 *ledgerdiff* is a chronological diffing tool for ledger files. The tool outputs
 an ed-style diff of two ledger files that can be read by Vim.
 
-This tool is useful when merging two ledger files using Vim as the tool uses
-the date of transactions to provide more accurate diffs, i.e., operations done
-at similar time are closer to each other.
+This tool is useful when merging two ledger files using editors like Vim as the
+tool uses transaction dates to provide more accurate diffs, that is, the tool
+does the following:
+
+* It chronologically shorts outputted hunks by date.
+* It matches blank lines between ledger entries to align same-dated
+  transactions together.
 
 There is already
 [hledger-diff](https://hackage.haskell.org/package/hledger-diff) but that tool

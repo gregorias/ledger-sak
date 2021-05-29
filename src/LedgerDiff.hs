@@ -1,3 +1,4 @@
+-- | Generates a smart diff of ledger files.
 module LedgerDiff (
   diffLedgerText,
   diffLedgerIO,
