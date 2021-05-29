@@ -156,11 +156,21 @@ matchUndatedChunks ((RightChunk (Just _, r)) : xs) = ("", r) : matchUndatedChunk
 matchUndatedChunks ((LeftChunk (Just _, l)) : xs) = (l, "") : matchUndatedChunks xs
 matchUndatedChunks ((BothSame _ (l, r)) : xs) = (l, r) : matchUndatedChunks xs
 
+-- | Generates ed hunks that are compatible with Vim.
+--
+-- Until https://github.com/neovim/neovim/issues/14522 is fixed, we need to
+-- merge all diffs back together to avoid separate append and delete
+-- instructions.
+generateAVimCompatibleDiff :: [[Diff Text]] -> [EdHunk]
+generateAVimCompatibleDiff = groupedDiffToEdHunks . one . fold
+
 -- | Runs a chronological diff on two Ledger files.
 --
 -- Outputs an ed-style diff.
 diffLedger :: Journal -> Journal -> Text
-diffLedger (Journal origChunks) (Journal destChunks) = edHunksToEdDiff edHunks
+diffLedger (Journal origChunks) (Journal destChunks) =
+  edHunksToEdDiff $
+    generateAVimCompatibleDiff diffsGroupedByDate
  where
   (origSameDayGroupedChunks, destSameDayGroupedChunks :: [(Maybe Day, Text)]) =
     both
@@ -170,10 +180,6 @@ diffLedger (Journal origChunks) (Journal destChunks) = edHunksToEdDiff edHunks
     fmap (uncurry (getDiffBy similarLedgerLine) . both lines) $
       matchUndatedChunks $
         mergeDatedChunks origSameDayGroupedChunks destSameDayGroupedChunks
-  -- Until https://github.com/neovim/neovim/issues/14522 is fixed, we need to merge all diffs back together to avoid
-  -- separate append and delete instructions)
-  allDiffsForNeovim :: [Diff Text] = fold diffsGroupedByDate
-  edHunks :: [EdHunk] = groupedDiffToEdHunks [allDiffsForNeovim]
 
 -- | Runs a chronological diff on two Ledger files.
 --
