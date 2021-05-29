@@ -74,14 +74,15 @@ groupIntoSections = groupJustWithNothings . groupNothings
     | otherwise = (Just d0, c0) : groupJustWithNothings ((Nothing, cm) : (Just d1, c1) : hs)
   groupJustWithNothings (h : hs) = h : groupJustWithNothings hs
 
--- | This data structures serializes a hunk in a dated diff
-data IntermediateDiff d
-  = Matched (Text, Text)
-  | LeftChunk (Maybe d, Text)
-  | RightChunk (Maybe d, Text)
+-- | 'IntermediateDiff' represents parts of two diffed objects and whether they
+-- stand alone or represent the same section in both.
+data IntermediateDiff d c
+  = Matched (c, c)
+  | LeftChunk (Maybe d, c)
+  | RightChunk (Maybe d, c)
   deriving stock (Eq, Show)
 
-flipIntermediateDiff :: IntermediateDiff d -> IntermediateDiff d
+flipIntermediateDiff :: IntermediateDiff d c -> IntermediateDiff d c
 flipIntermediateDiff (Matched p) = Matched (swap p)
 flipIntermediateDiff (LeftChunk a) = RightChunk a
 flipIntermediateDiff (RightChunk a) = LeftChunk a
@@ -107,7 +108,11 @@ flipIntermediateDiff (RightChunk a) = LeftChunk a
 --     [(Just 10, "10"), (Nothing, "r0"), (Just 14, "14")]
 -- :}
 -- [LeftChunk (Just 9,"9"),LeftChunk (Nothing,"l0"),RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),Matched ("14","14")]
-mergeDatedSections :: (Ord d) => [(Maybe d, Text)] -> [(Maybe d, Text)] -> [IntermediateDiff d]
+mergeDatedSections ::
+  (Ord d, Semigroup section) =>
+  [(Maybe d, section)] ->
+  [(Maybe d, section)] ->
+  [IntermediateDiff d section]
 mergeDatedSections [] [] = []
 mergeDatedSections (l@(Just d0, x) : ls) (r@(Just d1, y) : rs) =
   case compare d0 d1 of
@@ -140,23 +145,23 @@ mergeDatedSections (l@(Just _, _) : ls) [] = LeftChunk l : mergeDatedSections []
 --      Matched ("14","14")]
 -- :}
 -- [("9",""),("","10"),("l0","r0"),("14","14")]
-matchUndatedSections :: (Ord d) => [IntermediateDiff d] -> [(Text, Text)]
+matchUndatedSections :: (Ord d, Monoid c) => [IntermediateDiff d c] -> [(c, c)]
 matchUndatedSections [] = []
 matchUndatedSections (h0@(LeftChunk (Nothing, lc)) : rest) =
   case rest of
     (h@(RightChunk (Nothing, rc)) : rest') ->
       case rest' of
         (LeftChunk (Just _, lc') : h'@(LeftChunk (Nothing, _) : _)) ->
-          (lc, "") : (lc', "") : matchUndatedSections (h : h')
+          (lc, mempty) : (lc', mempty) : matchUndatedSections (h : h')
         (RightChunk (Just _, rc') : h'@(RightChunk (Nothing, _) : _)) ->
-          ("", rc) : ("", rc') : matchUndatedSections (h0 : h')
+          (mempty, rc) : (mempty, rc') : matchUndatedSections (h0 : h')
         _ -> (lc, rc) : matchUndatedSections rest'
-    ((RightChunk (Just _, rc)) : rest') -> ("", rc) : matchUndatedSections (h0 : rest')
-    _ -> (lc, "") : matchUndatedSections rest
+    ((RightChunk (Just _, rc)) : rest') -> (mempty, rc) : matchUndatedSections (h0 : rest')
+    _ -> (lc, mempty) : matchUndatedSections rest
 matchUndatedSections m@((RightChunk (Nothing, _)) : _) =
   swap <$> matchUndatedSections (flipIntermediateDiff <$> m)
-matchUndatedSections ((RightChunk (Just _, r)) : xs) = ("", r) : matchUndatedSections xs
-matchUndatedSections ((LeftChunk (Just _, l)) : xs) = (l, "") : matchUndatedSections xs
+matchUndatedSections ((RightChunk (Just _, r)) : xs) = (mempty, r) : matchUndatedSections xs
+matchUndatedSections ((LeftChunk (Just _, l)) : xs) = (l, mempty) : matchUndatedSections xs
 matchUndatedSections ((Matched (l, r)) : xs) = (l, r) : matchUndatedSections xs
 
 -- | Generates ed hunks that are compatible with Vim.
