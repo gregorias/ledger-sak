@@ -46,16 +46,18 @@ chunkToTaggedPair :: Chunk -> (Maybe Day, Text)
 chunkToTaggedPair (ChunkUndatedChunk (UndatedChunk content)) = (Nothing, content)
 chunkToTaggedPair (ChunkDatedChunk (DatedChunk day content)) = (Just day, content)
 
--- | Groups together consecutive undated chunks as well as same-dated chunks
--- interspersed with undated ones.
+-- | Groups together consecutive undated chunks and same-dated chunks.
+--
+-- Section here is a sequence of undated chunks or same-dated chunks
+-- interspersed with undated chunks.
 --
 -- >>> :{
---   groupSameValueSections
+--   groupIntoSections
 --     [ (Just 1, "1"), (Nothing, "yo"), (Nothing, "lo"), (Just 1, "2") ]
 -- :}
 -- [(Just 1,"1yolo2")]
-groupSameValueSections :: (Monoid a, Eq d) => [(Maybe d, a)] -> [(Maybe d, a)]
-groupSameValueSections = groupJustWithNothings . groupNothings
+groupIntoSections :: (Monoid a, Eq d) => [(Maybe d, a)] -> [(Maybe d, a)]
+groupIntoSections = groupJustWithNothings . groupNothings
  where
   groupNothings [] = []
   groupNothings ((Nothing, x) : ((Nothing, y) : ys)) = groupNothings ((Nothing, x <> y) : ys)
@@ -74,13 +76,13 @@ groupSameValueSections = groupJustWithNothings . groupNothings
 
 -- | This data structures serializes a hunk in a dated diff
 data IntermediateDiff d
-  = BothSame d (Text, Text)
+  = Matched (Text, Text)
   | LeftChunk (Maybe d, Text)
   | RightChunk (Maybe d, Text)
   deriving stock (Eq, Show)
 
 flipIntermediateDiff :: IntermediateDiff d -> IntermediateDiff d
-flipIntermediateDiff (BothSame d p) = BothSame d (swap p)
+flipIntermediateDiff (Matched p) = Matched (swap p)
 flipIntermediateDiff (LeftChunk a) = RightChunk a
 flipIntermediateDiff (RightChunk a) = LeftChunk a
 
@@ -89,42 +91,42 @@ flipIntermediateDiff (RightChunk a) = LeftChunk a
 -- The following should be true for chronologically sorted inputs:
 --
 --   * The output list is also sorted by date (if present) and is stable.
---   * If a date appears in both files, its chunks result in 'BothSame'.
+--   * If a date appears in both files, its chunks result in 'Matched'.
 --   * Undated chunks appear before dated chunks.
 --
 -- >>> :{
---   mergeDatedChunks
+--   mergeDatedSections
 --     [ (Just 1, "1"), (Nothing, ""), (Just 3, "3")]
 --     [(Just 1, "1"), (Nothing, ""), (Just 2, "2"), (Nothing, ""), (Just 4, "4")]
 -- :}
--- [BothSame 1 ("1","1"),LeftChunk (Nothing,""),RightChunk (Nothing,""),RightChunk (Just 2,"2"),RightChunk (Nothing,""),LeftChunk (Just 3,"3"),RightChunk (Just 4,"4")]
+-- [Matched ("1","1"),LeftChunk (Nothing,""),RightChunk (Nothing,""),RightChunk (Just 2,"2"),RightChunk (Nothing,""),LeftChunk (Just 3,"3"),RightChunk (Just 4,"4")]
 --
 -- >>> :{
---   mergeDatedChunks
+--   mergeDatedSections
 --     [(Just 9, "9"), (Nothing, "l0"), (Just 14, "14")]
 --     [(Just 10, "10"), (Nothing, "r0"), (Just 14, "14")]
 -- :}
--- [LeftChunk (Just 9,"9"),LeftChunk (Nothing,"l0"),RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),BothSame 14 ("14","14")]
-mergeDatedChunks :: (Ord d) => [(Maybe d, Text)] -> [(Maybe d, Text)] -> [IntermediateDiff d]
-mergeDatedChunks [] [] = []
-mergeDatedChunks (l@(Just d0, x) : ls) (r@(Just d1, y) : rs) =
+-- [LeftChunk (Just 9,"9"),LeftChunk (Nothing,"l0"),RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),Matched ("14","14")]
+mergeDatedSections :: (Ord d) => [(Maybe d, Text)] -> [(Maybe d, Text)] -> [IntermediateDiff d]
+mergeDatedSections [] [] = []
+mergeDatedSections (l@(Just d0, x) : ls) (r@(Just d1, y) : rs) =
   case compare d0 d1 of
-    EQ -> BothSame d0 (x, y) : mergeDatedChunks ls rs
-    LT -> LeftChunk l : mergeDatedChunks ls (r : rs)
-    GT -> RightChunk r : mergeDatedChunks (l : ls) rs
-mergeDatedChunks ((Nothing, x0) : ls) rs =
-  LeftChunk (Nothing, x0) : mergeDatedChunks ls rs
-mergeDatedChunks ls rs@((Nothing, _) : _) = flipIntermediateDiff <$> mergeDatedChunks rs ls
-mergeDatedChunks [] (r@(Just _, _) : rs) = RightChunk r : mergeDatedChunks [] rs
-mergeDatedChunks (l@(Just _, _) : ls) [] = LeftChunk l : mergeDatedChunks [] ls
+    EQ -> Matched (x, y) : mergeDatedSections ls rs
+    LT -> LeftChunk l : mergeDatedSections ls (r : rs)
+    GT -> RightChunk r : mergeDatedSections (l : ls) rs
+mergeDatedSections ((Nothing, x0) : ls) rs =
+  LeftChunk (Nothing, x0) : mergeDatedSections ls rs
+mergeDatedSections ls rs@((Nothing, _) : _) = flipIntermediateDiff <$> mergeDatedSections rs ls
+mergeDatedSections [] (r@(Just _, _) : rs) = RightChunk r : mergeDatedSections [] rs
+mergeDatedSections (l@(Just _, _) : ls) [] = LeftChunk l : mergeDatedSections [] ls
 
--- | Finds an optimal matching of undated chunks.
+-- | Finds a good matching of undated sections.
 --
--- The optimal matching is such that for each diff between dated chunks, we
+-- A good matching is such that for each diff between dated chunks, we
 -- match the latest undated chunk before them.
 --
 -- >>> :{
---   matchUndatedChunks
+--   matchUndatedSections
 --     [LeftChunk (Nothing,"l0"),RightChunk (Nothing,"r0"),
 --      RightChunk (Just 2,"2"),RightChunk (Nothing,"r1"),
 --      LeftChunk (Just 3,"3"),RightChunk (Just 4,"4")]
@@ -132,30 +134,30 @@ mergeDatedChunks (l@(Just _, _) : ls) [] = LeftChunk l : mergeDatedChunks [] ls
 -- [("","r0"),("","2"),("l0","r1"),("3",""),("","4")]
 --
 -- >>> :{
---   matchUndatedChunks
+--   matchUndatedSections
 --     [LeftChunk (Just 9, "9"), LeftChunk (Nothing,"l0"),
 --      RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),
---      BothSame 14 ("14","14")]
+--      Matched ("14","14")]
 -- :}
 -- [("9",""),("","10"),("l0","r0"),("14","14")]
-matchUndatedChunks :: (Ord d) => [IntermediateDiff d] -> [(Text, Text)]
-matchUndatedChunks [] = []
-matchUndatedChunks (h0@(LeftChunk (Nothing, lc)) : rest) =
+matchUndatedSections :: (Ord d) => [IntermediateDiff d] -> [(Text, Text)]
+matchUndatedSections [] = []
+matchUndatedSections (h0@(LeftChunk (Nothing, lc)) : rest) =
   case rest of
     (h@(RightChunk (Nothing, rc)) : rest') ->
       case rest' of
         (LeftChunk (Just _, lc') : h'@(LeftChunk (Nothing, _) : _)) ->
-          (lc, "") : (lc', "") : matchUndatedChunks (h : h')
+          (lc, "") : (lc', "") : matchUndatedSections (h : h')
         (RightChunk (Just _, rc') : h'@(RightChunk (Nothing, _) : _)) ->
-          ("", rc) : ("", rc') : matchUndatedChunks (h0 : h')
-        _ -> (lc, rc) : matchUndatedChunks rest'
-    ((RightChunk (Just _, rc)) : rest') -> ("", rc) : matchUndatedChunks (h0 : rest')
-    _ -> (lc, "") : matchUndatedChunks rest
-matchUndatedChunks m@((RightChunk (Nothing, _)) : _) =
-  swap <$> matchUndatedChunks (flipIntermediateDiff <$> m)
-matchUndatedChunks ((RightChunk (Just _, r)) : xs) = ("", r) : matchUndatedChunks xs
-matchUndatedChunks ((LeftChunk (Just _, l)) : xs) = (l, "") : matchUndatedChunks xs
-matchUndatedChunks ((BothSame _ (l, r)) : xs) = (l, r) : matchUndatedChunks xs
+          ("", rc) : ("", rc') : matchUndatedSections (h0 : h')
+        _ -> (lc, rc) : matchUndatedSections rest'
+    ((RightChunk (Just _, rc)) : rest') -> ("", rc) : matchUndatedSections (h0 : rest')
+    _ -> (lc, "") : matchUndatedSections rest
+matchUndatedSections m@((RightChunk (Nothing, _)) : _) =
+  swap <$> matchUndatedSections (flipIntermediateDiff <$> m)
+matchUndatedSections ((RightChunk (Just _, r)) : xs) = ("", r) : matchUndatedSections xs
+matchUndatedSections ((LeftChunk (Just _, l)) : xs) = (l, "") : matchUndatedSections xs
+matchUndatedSections ((Matched (l, r)) : xs) = (l, r) : matchUndatedSections xs
 
 -- | Generates ed hunks that are compatible with Vim.
 --
@@ -173,14 +175,13 @@ diffLedger (Journal origChunks) (Journal destChunks) =
   edHunksToEdDiff $
     generateAVimCompatibleDiff diffsGroupedByDate
  where
-  (origSameDayGroupedChunks, destSameDayGroupedChunks :: [(Maybe Day, Text)]) =
+  sections :: ([(Maybe Day, Text)], [(Maybe Day, Text)]) =
     both
-      (groupSameValueSections . fmap chunkToTaggedPair)
+      (groupIntoSections . fmap chunkToTaggedPair)
       (origChunks, destChunks)
   diffsGroupedByDate :: [[Diff Text]] =
     fmap (uncurry (getDiffBy similarLedgerLine) . both lines) $
-      matchUndatedChunks $
-        mergeDatedChunks origSameDayGroupedChunks destSameDayGroupedChunks
+      matchUndatedSections . uncurry mergeDatedSections $ sections
 
 -- | Runs a chronological diff on two Ledger files.
 --
