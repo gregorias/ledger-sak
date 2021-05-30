@@ -9,6 +9,7 @@ module LedgerDiff (
 
 import Data.Algorithm.Diff (
   Diff,
+  PolyDiff (Both, First, Second),
   getDiffBy,
  )
 import qualified Data.Text as T
@@ -60,6 +61,10 @@ data Section
   = UndatedSection Text
   | DatedSection Day [SectionChunk]
   deriving stock (Show)
+
+sectionToText :: Section -> Text
+sectionToText (UndatedSection us) = us
+sectionToText (DatedSection _ scs) = foldMap sectionChunkToText scs
 
 sectionToTaggedPair :: Section -> (Maybe Day, Text)
 sectionToTaggedPair (UndatedSection c) = (Nothing, c)
@@ -119,43 +124,58 @@ flipIntermediateDiff (Matched p) = Matched (swap p)
 flipIntermediateDiff (LeftChunk a) = RightChunk a
 flipIntermediateDiff (RightChunk a) = LeftChunk a
 
--- | Serializes two lists of dated chunks.
+sectionDiffsToIntermediateDiff :: [Diff Section] -> [IntermediateDiff Day Text]
+sectionDiffsToIntermediateDiff [] = []
+sectionDiffsToIntermediateDiff ((Both l r) : rest) =
+  Matched (both sectionToText (l, r)) :
+  sectionDiffsToIntermediateDiff rest
+sectionDiffsToIntermediateDiff ((First s) : rest) =
+  LeftChunk (sectionToTaggedPair s) : sectionDiffsToIntermediateDiff rest
+sectionDiffsToIntermediateDiff ((Second s) : rest) =
+  RightChunk (sectionToTaggedPair s) : sectionDiffsToIntermediateDiff rest
+
+-- | Serializes two lists into a diff list of sections
 --
 -- The following should be true for chronologically sorted inputs:
 --
 --   * The output list is also sorted by date (if present) and is stable.
---   * If a date appears in both files, its chunks result in 'Matched'.
---   * Undated chunks appear before dated chunks.
+--   * If a date appears in both files, its sections result in a 'Both' entry.
 --
 -- >>> :{
---   mergeDatedSections
---     [ (Just 1, "1"), (Nothing, ""), (Just 3, "3")]
---     [(Just 1, "1"), (Nothing, ""), (Just 2, "2"), (Nothing, ""), (Just 4, "4")]
+--   serializeTwoSectionsIntoOneDiff
+--     [ (DatedSection (fromGregorian 2021 5 1) [DatedSectionChunk "1\n"])
+--     , (UndatedSection "\n")
+--     , (DatedSection (fromGregorian 2021 5 3) [DatedSectionChunk "3\n"])]
+--     [ (DatedSection (fromGregorian 2021 5 1) [DatedSectionChunk "1\n"])
+--     , (UndatedSection "\n")
+--     , (DatedSection (fromGregorian 2021 5 2) [DatedSectionChunk "2\n"])
+--     , (UndatedSection "\n")
+--     , (DatedSection (fromGregorian 2021 5 4) [DatedSectionChunk "4\n"])]
 -- :}
--- [Matched ("1","1"),LeftChunk (Nothing,""),RightChunk (Nothing,""),RightChunk (Just 2,"2"),RightChunk (Nothing,""),LeftChunk (Just 3,"3"),RightChunk (Just 4,"4")]
+-- [Both (DatedSection 2021-05-01 [DatedSectionChunk "1\n"]) (DatedSection 2021-05-01 [DatedSectionChunk "1\n"]),First (UndatedSection "\n"),Second (UndatedSection "\n"),Second (DatedSection 2021-05-02 [DatedSectionChunk "2\n"]),Second (UndatedSection "\n"),First (DatedSection 2021-05-03 [DatedSectionChunk "3\n"]),Second (DatedSection 2021-05-04 [DatedSectionChunk "4\n"])]
 --
 -- >>> :{
---   mergeDatedSections
---     [(Just 9, "9"), (Nothing, "l0"), (Just 14, "14")]
---     [(Just 10, "10"), (Nothing, "r0"), (Just 14, "14")]
+--   serializeTwoSectionsIntoOneDiff
+--     [ (DatedSection (fromGregorian 2021 5 9) [DatedSectionChunk "9\n"])
+--     , (UndatedSection "l0\n")
+--     , (DatedSection (fromGregorian 2021 5 14) [DatedSectionChunk "14\n"])]
+--     [ (DatedSection (fromGregorian 2021 5 10) [DatedSectionChunk "10\n"])
+--     , (UndatedSection "r0\n")
+--     , (DatedSection (fromGregorian 2021 5 14) [DatedSectionChunk "14\n"])]
 -- :}
--- [LeftChunk (Just 9,"9"),LeftChunk (Nothing,"l0"),RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),Matched ("14","14")]
-mergeDatedSections ::
-  (Ord d, Semigroup section) =>
-  [(Maybe d, section)] ->
-  [(Maybe d, section)] ->
-  [IntermediateDiff d section]
-mergeDatedSections [] [] = []
-mergeDatedSections (l@(Just d0, x) : ls) (r@(Just d1, y) : rs) =
+-- [First (DatedSection 2021-05-09 [DatedSectionChunk "9\n"]),First (UndatedSection "l0\n"),Second (DatedSection 2021-05-10 [DatedSectionChunk "10\n"]),Second (UndatedSection "r0\n"),Both (DatedSection 2021-05-14 [DatedSectionChunk "14\n"]) (DatedSection 2021-05-14 [DatedSectionChunk "14\n"])]
+serializeTwoSectionsIntoOneDiff :: [Section] -> [Section] -> [Diff Section]
+serializeTwoSectionsIntoOneDiff [] [] = []
+serializeTwoSectionsIntoOneDiff (l : ls) [] = First l : serializeTwoSectionsIntoOneDiff ls []
+serializeTwoSectionsIntoOneDiff (l@(DatedSection d0 _) : ls) (r@(DatedSection d1 _) : rs) =
   case compare d0 d1 of
-    EQ -> Matched (x, y) : mergeDatedSections ls rs
-    LT -> LeftChunk l : mergeDatedSections ls (r : rs)
-    GT -> RightChunk r : mergeDatedSections (l : ls) rs
-mergeDatedSections ((Nothing, x0) : ls) rs =
-  LeftChunk (Nothing, x0) : mergeDatedSections ls rs
-mergeDatedSections ls rs@((Nothing, _) : _) = flipIntermediateDiff <$> mergeDatedSections rs ls
-mergeDatedSections [] (r@(Just _, _) : rs) = RightChunk r : mergeDatedSections [] rs
-mergeDatedSections (l@(Just _, _) : ls) [] = LeftChunk l : mergeDatedSections [] ls
+    EQ -> Both l r : serializeTwoSectionsIntoOneDiff ls rs
+    LT -> First l : serializeTwoSectionsIntoOneDiff ls (r : rs)
+    GT -> Second r : serializeTwoSectionsIntoOneDiff (l : ls) rs
+serializeTwoSectionsIntoOneDiff (l@(UndatedSection _) : ls) rs =
+  First l : serializeTwoSectionsIntoOneDiff ls rs
+serializeTwoSectionsIntoOneDiff [] (r : rs) = Second r : serializeTwoSectionsIntoOneDiff [] rs
+serializeTwoSectionsIntoOneDiff ls (r@(UndatedSection _) : rs) = Second r : serializeTwoSectionsIntoOneDiff ls rs
 
 -- | Finds a good matching of undated sections.
 --
@@ -216,7 +236,7 @@ diffLedger (Journal origChunks) (Journal destChunks) =
     both groupChunksIntoSections (origChunks, destChunks)
   diffsGroupedByDate :: [[Diff Text]] =
     fmap (uncurry (getDiffBy similarLedgerLine) . both lines) $
-      matchUndatedSections . uncurry mergeDatedSections $ both (fmap sectionToTaggedPair) sections
+      matchUndatedSections . sectionDiffsToIntermediateDiff . uncurry serializeTwoSectionsIntoOneDiff $ sections
 
 -- | Runs a chronological diff on two Ledger files.
 --
