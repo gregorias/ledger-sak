@@ -1,3 +1,6 @@
+-- For doctests
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+
 -- | Generates a smart diff of ledger files.
 module LedgerDiff (
   diffLedgerText,
@@ -10,6 +13,7 @@ import Data.Algorithm.Diff (
  )
 import qualified Data.Text as T
 import Data.Time (Day)
+import Data.Time.Calendar (fromGregorian)
 import Ed (EdHunk, edHunksToEdDiff, groupedDiffToEdHunks)
 import Parse (
   Chunk (ChunkDatedChunk, ChunkUndatedChunk),
@@ -42,9 +46,24 @@ similarLedgerLine l r = process l == process r
   dropStatus = T.dropWhile (\c -> c == '!' || c == '*')
   process = dropStatus . dropWhitespace
 
-chunkToTaggedPair :: Chunk -> (Maybe Day, Text)
-chunkToTaggedPair (ChunkUndatedChunk (UndatedChunk content)) = (Nothing, content)
-chunkToTaggedPair (ChunkDatedChunk (DatedChunk day content)) = (Just day, content)
+data SectionChunk
+  = DatedSectionChunk Text
+  | UndatedSectionChunk Text
+  deriving stock (Show)
+
+sectionChunkToText :: SectionChunk -> Text
+sectionChunkToText (DatedSectionChunk content) = content
+sectionChunkToText (UndatedSectionChunk content) = content
+
+-- | A section is a grouping of chunks.
+data Section
+  = UndatedSection Text
+  | DatedSection Day [SectionChunk]
+  deriving stock (Show)
+
+sectionToTaggedPair :: Section -> (Maybe Day, Text)
+sectionToTaggedPair (UndatedSection c) = (Nothing, c)
+sectionToTaggedPair (DatedSection d c) = (Just d, fold $ sectionChunkToText <$> c)
 
 -- | Groups together consecutive undated chunks and same-dated chunks.
 --
@@ -52,27 +71,40 @@ chunkToTaggedPair (ChunkDatedChunk (DatedChunk day content)) = (Just day, conten
 -- interspersed with undated chunks.
 --
 -- >>> :{
---   groupIntoSections
---     [ (Just 1, "1"), (Nothing, "yo"), (Nothing, "lo"), (Just 1, "2") ]
+--   groupChunksIntoSections
+--     [ ChunkDatedChunk (DatedChunk (fromGregorian 2021 5 30) "1")
+--     , ChunkUndatedChunk (UndatedChunk "yo")
+--     , ChunkUndatedChunk (UndatedChunk "lo")
+--     , ChunkDatedChunk (DatedChunk (fromGregorian 2021 5 30) "2")]
 -- :}
--- [(Just 1,"1yolo2")]
-groupIntoSections :: (Monoid a, Eq d) => [(Maybe d, a)] -> [(Maybe d, a)]
-groupIntoSections = groupJustWithNothings . groupNothings
+-- [DatedSection 2021-05-30 [DatedSectionChunk "1yolo2"]]
+groupChunksIntoSections :: [Chunk] -> [Section]
+groupChunksIntoSections = groupDatedWithInterespersedUndated . groupUndated
  where
-  groupNothings [] = []
-  groupNothings ((Nothing, x) : ((Nothing, y) : ys)) = groupNothings ((Nothing, x <> y) : ys)
-  groupNothings (x : xs) = x : groupNothings xs
+  groupUndated :: [Chunk] -> [Chunk]
+  groupUndated [] = []
+  groupUndated (ChunkUndatedChunk uc : (ChunkUndatedChunk uc' : cs)) =
+    groupUndated (ChunkUndatedChunk (uc <> uc') : cs)
+  groupUndated (x : xs) = x : groupUndated xs
 
-  groupJustWithNothings :: (Semigroup a, Eq d) => [(Maybe d, a)] -> [(Maybe d, a)]
-  groupJustWithNothings [] = []
-  groupJustWithNothings (h@(Nothing, _) : hs) = h : groupJustWithNothings hs
-  groupJustWithNothings ((Just d0, c0) : (Just d1, c1) : hs)
-    | d0 == d1 = groupJustWithNothings $ (Just d0, c0 <> c1) : hs
-    | otherwise = (Just d0, c0) : groupJustWithNothings ((Just d1, c1) : hs)
-  groupJustWithNothings ((Just d0, c0) : (Nothing, cm) : (Just d1, c1) : hs)
-    | d0 == d1 = groupJustWithNothings $ (Just d0, c0 <> cm <> c1) : hs
-    | otherwise = (Just d0, c0) : groupJustWithNothings ((Nothing, cm) : (Just d1, c1) : hs)
-  groupJustWithNothings (h : hs) = h : groupJustWithNothings hs
+  groupDatedWithInterespersedUndated :: [Chunk] -> [Section]
+  groupDatedWithInterespersedUndated [] = []
+  groupDatedWithInterespersedUndated (ChunkUndatedChunk uc : hs) =
+    UndatedSection (getUndatedChunk uc) : groupDatedWithInterespersedUndated hs
+  groupDatedWithInterespersedUndated
+    ( (ChunkDatedChunk (DatedChunk d0 c0))
+        : rest@(ChunkDatedChunk (DatedChunk d1 c1) : hs)
+      )
+      | d0 == d1 = groupDatedWithInterespersedUndated $ ChunkDatedChunk (DatedChunk d0 $ c0 <> c1) : hs
+      | otherwise = DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
+  groupDatedWithInterespersedUndated
+    ( ChunkDatedChunk (DatedChunk d0 c0)
+        : rest@(ChunkUndatedChunk (UndatedChunk cu) : ChunkDatedChunk (DatedChunk d1 c1) : hs)
+      )
+      | d0 == d1 = groupDatedWithInterespersedUndated $ ChunkDatedChunk (DatedChunk d0 (c0 <> cu <> c1)) : hs
+      | otherwise = DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
+  groupDatedWithInterespersedUndated (ChunkDatedChunk (DatedChunk d0 c0) : rest) =
+    DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
 
 -- | 'IntermediateDiff' represents parts of two diffed objects and whether they
 -- stand alone or represent the same section in both.
@@ -180,13 +212,11 @@ diffLedger (Journal origChunks) (Journal destChunks) =
   edHunksToEdDiff $
     generateAVimCompatibleDiff diffsGroupedByDate
  where
-  sections :: ([(Maybe Day, Text)], [(Maybe Day, Text)]) =
-    both
-      (groupIntoSections . fmap chunkToTaggedPair)
-      (origChunks, destChunks)
+  sections :: ([Section], [Section]) =
+    both groupChunksIntoSections (origChunks, destChunks)
   diffsGroupedByDate :: [[Diff Text]] =
     fmap (uncurry (getDiffBy similarLedgerLine) . both lines) $
-      matchUndatedSections . uncurry mergeDatedSections $ sections
+      matchUndatedSections . uncurry mergeDatedSections $ both (fmap sectionToTaggedPair) sections
 
 -- | Runs a chronological diff on two Ledger files.
 --
