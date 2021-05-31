@@ -251,9 +251,10 @@ diffLedger (Journal origChunks) (Journal destChunks) =
  where
   sections :: ([Section], [Section]) =
     both groupChunksIntoSections (origChunks, destChunks)
+  fullyMatchedSections :: [Diff Section] =
+    matchFillerRanges . uncurry serializeTwoSectionsIntoOneDiff $ sections
   diffsGroupedByDate :: [[Diff Text]] =
-    fmap (uncurry (getDiffBy similarLedgerLine) . both lines . sectionDiffToPair) $
-      matchFillerRanges . uncurry serializeTwoSectionsIntoOneDiff $ sections
+    uncurry (getDiffBy similarLedgerLine) . both lines . sectionDiffToPair <$> fullyMatchedSections
 
 -- | Runs a chronological diff on two Ledger files.
 --
