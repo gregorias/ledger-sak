@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 -- For doctests
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
@@ -5,6 +7,8 @@
 module LedgerDiff (
   diffLedgerText,
   diffLedgerIO,
+  SmartPiece (..),
+  matchFillerRanges,
 ) where
 
 import Data.Algorithm.Diff (
@@ -66,10 +70,6 @@ sectionToText :: Section -> Text
 sectionToText (UndatedSection us) = us
 sectionToText (DatedSection _ scs) = foldMap sectionChunkToText scs
 
-sectionToTaggedPair :: Section -> (Maybe Day, Text)
-sectionToTaggedPair (UndatedSection c) = (Nothing, c)
-sectionToTaggedPair (DatedSection d c) = (Just d, fold $ sectionChunkToText <$> c)
-
 -- | Groups together consecutive undated chunks and same-dated chunks.
 --
 -- Section here is a sequence of undated chunks or same-dated chunks
@@ -110,29 +110,6 @@ groupChunksIntoSections = groupDatedWithInterespersedUndated . groupUndated
       | otherwise = DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
   groupDatedWithInterespersedUndated (ChunkDatedChunk (DatedChunk d0 c0) : rest) =
     DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
-
--- | 'IntermediateDiff' represents parts of two diffed objects and whether they
--- stand alone or represent the same section in both.
-data IntermediateDiff d c
-  = Matched (c, c)
-  | LeftChunk (Maybe d, c)
-  | RightChunk (Maybe d, c)
-  deriving stock (Eq, Show)
-
-flipIntermediateDiff :: IntermediateDiff d c -> IntermediateDiff d c
-flipIntermediateDiff (Matched p) = Matched (swap p)
-flipIntermediateDiff (LeftChunk a) = RightChunk a
-flipIntermediateDiff (RightChunk a) = LeftChunk a
-
-sectionDiffsToIntermediateDiff :: [Diff Section] -> [IntermediateDiff Day Text]
-sectionDiffsToIntermediateDiff [] = []
-sectionDiffsToIntermediateDiff ((Both l r) : rest) =
-  Matched (both sectionToText (l, r)) :
-  sectionDiffsToIntermediateDiff rest
-sectionDiffsToIntermediateDiff ((First s) : rest) =
-  LeftChunk (sectionToTaggedPair s) : sectionDiffsToIntermediateDiff rest
-sectionDiffsToIntermediateDiff ((Second s) : rest) =
-  RightChunk (sectionToTaggedPair s) : sectionDiffsToIntermediateDiff rest
 
 -- | Serializes two lists into a diff list of sections
 --
@@ -177,44 +154,79 @@ serializeTwoSectionsIntoOneDiff (l@(UndatedSection _) : ls) rs =
 serializeTwoSectionsIntoOneDiff [] (r : rs) = Second r : serializeTwoSectionsIntoOneDiff [] rs
 serializeTwoSectionsIntoOneDiff ls (r@(UndatedSection _) : rs) = Second r : serializeTwoSectionsIntoOneDiff ls rs
 
--- | Finds a good matching of undated sections.
+data SmartPieceStatus d
+  = Filler
+  | Ordered d
+  deriving stock (Eq)
+
+class SmartPiece p where
+  type SmartPieceOrder p
+  type SmartPieceContent p
+
+  getSpContent :: p -> SmartPieceContent p
+  getSpStatus :: p -> SmartPieceStatus (SmartPieceOrder p)
+  isSpOrdered :: p -> Bool
+  isSpOrdered p = case getSpStatus p of
+    Filler -> False
+    (Ordered _) -> True
+
+instance SmartPiece Section where
+  type SmartPieceOrder Section = Day
+  type SmartPieceContent Section = Section
+
+  getSpContent = id
+  getSpStatus (UndatedSection _) = Filler
+  getSpStatus (DatedSection d _) = Ordered d
+
+instance SmartPiece (Maybe Int, Text) where
+  type SmartPieceOrder (Maybe Int, Text) = Int
+  type SmartPieceContent (Maybe Int, Text) = Text
+
+  getSpContent = snd
+  getSpStatus (Nothing, _) = Filler
+  getSpStatus (Just d, _) = Ordered d
+
+-- | Finds a good matching of filler ranges.
 --
--- A good matching is such that for each diff between dated chunks, we
--- match the latest undated chunk before them.
---
--- >>> :{
---   matchUndatedSections
---     [LeftChunk (Nothing,"l0"),RightChunk (Nothing,"r0"),
---      RightChunk (Just 2,"2"),RightChunk (Nothing,"r1"),
---      LeftChunk (Just 3,"3"),RightChunk (Just 4,"4")]
--- :}
--- [("","r0"),("","2"),("l0","r1"),("3",""),("","4")]
---
--- >>> :{
---   matchUndatedSections
---     [LeftChunk (Just 9, "9"), LeftChunk (Nothing,"l0"),
---      RightChunk (Just 10,"10"),RightChunk (Nothing,"r0"),
---      Matched ("14","14")]
--- :}
--- [("9",""),("","10"),("l0","r0"),("14","14")]
-matchUndatedSections :: (Ord d, Monoid c) => [IntermediateDiff d c] -> [(c, c)]
-matchUndatedSections [] = []
-matchUndatedSections (h0@(LeftChunk (Nothing, lc)) : rest) =
-  case rest of
-    (h@(RightChunk (Nothing, rc)) : rest') ->
-      case rest' of
-        (LeftChunk (Just _, lc') : h'@(LeftChunk (Nothing, _) : _)) ->
-          (lc, mempty) : (lc', mempty) : matchUndatedSections (h : h')
-        (RightChunk (Just _, rc') : h'@(RightChunk (Nothing, _) : _)) ->
-          (mempty, rc) : (mempty, rc') : matchUndatedSections (h0 : h')
-        _ -> (lc, rc) : matchUndatedSections rest'
-    ((RightChunk (Just _, rc)) : rest') -> (mempty, rc) : matchUndatedSections (h0 : rest')
-    _ -> (lc, mempty) : matchUndatedSections rest
-matchUndatedSections m@((RightChunk (Nothing, _)) : _) =
-  swap <$> matchUndatedSections (flipIntermediateDiff <$> m)
-matchUndatedSections ((RightChunk (Just _, r)) : xs) = (mempty, r) : matchUndatedSections xs
-matchUndatedSections ((LeftChunk (Just _, l)) : xs) = (l, mempty) : matchUndatedSections xs
-matchUndatedSections ((Matched (l, r)) : xs) = (l, r) : matchUndatedSections xs
+-- A good matching is such that for each diff between nonfiller ranges, we
+-- match the latest filler ranges before them.
+matchFillerRanges :: (SmartPiece p) => [Diff p] -> [Diff (SmartPieceContent p)]
+matchFillerRanges [] = []
+matchFillerRanges (p0@(First f0) : ps0)
+  | isSpOrdered f0 = First (getSpContent f0) : matchFillerRanges ps0
+  | otherwise = case ps0 of
+    (p1@(Second s1) : ps1) ->
+      if isSpOrdered s1
+        then Second (getSpContent s1) : matchFillerRanges (p0 : ps1)
+        else case ps1 of
+          (First f2 : rest3@(First _ : _)) ->
+            First (getSpContent f0) : First (getSpContent f2) : matchFillerRanges (p1 : rest3)
+          (Second s2 : rest3@(Second _ : _)) ->
+            Second (getSpContent s1) : Second (getSpContent s2) : matchFillerRanges (p0 : rest3)
+          rest ->
+            Both (getSpContent f0) (getSpContent s1) : matchFillerRanges rest
+    (p1@(First f1) : ps1) -> case ps1 of
+      (First _ : _) -> First (getSpContent f0) : matchFillerRanges ps0
+      (Both _ _ : _) -> First (getSpContent f0) : matchFillerRanges ps0
+      (Second s2 : ps2) ->
+        if isSpOrdered s2
+          then First (getSpContent f0) : matchFillerRanges ps0
+          else case ps2 of
+            (First _ : _) ->
+              First (getSpContent f0) : First (getSpContent f1) : matchFillerRanges ps1
+            _ ->
+              Both (getSpContent f0) (getSpContent s2) : matchFillerRanges (p1 : ps1)
+      [] -> [First (getSpContent f0)]
+    ((Both l r) : ps1) ->
+      First (getSpContent f0) : Both (getSpContent l) (getSpContent r) : matchFillerRanges ps1
+    [] -> [First (getSpContent f0)]
+matchFillerRanges ps@((Second _) : _) = flipDiff <$> matchFillerRanges (flipDiff <$> ps)
+ where
+  flipDiff (First f) = Second f
+  flipDiff (Second s) = First s
+  flipDiff (Both l r) = Both r l
+matchFillerRanges ((Both l r) : xs) =
+  Both (getSpContent l) (getSpContent r) : matchFillerRanges xs
 
 -- | Generates ed hunks that are compatible with Vim.
 --
@@ -223,6 +235,11 @@ matchUndatedSections ((Matched (l, r)) : xs) = (l, r) : matchUndatedSections xs
 -- instructions.
 generateAVimCompatibleDiff :: [[Diff Text]] -> [EdHunk]
 generateAVimCompatibleDiff = groupedDiffToEdHunks . one . fold
+
+sectionDiffToPair :: Diff Section -> (Text, Text)
+sectionDiffToPair (First s) = (sectionToText s, "")
+sectionDiffToPair (Second s) = ("", sectionToText s)
+sectionDiffToPair (Both l r) = (sectionToText l, sectionToText r)
 
 -- | Runs a chronological diff on two Ledger files.
 --
@@ -235,8 +252,8 @@ diffLedger (Journal origChunks) (Journal destChunks) =
   sections :: ([Section], [Section]) =
     both groupChunksIntoSections (origChunks, destChunks)
   diffsGroupedByDate :: [[Diff Text]] =
-    fmap (uncurry (getDiffBy similarLedgerLine) . both lines) $
-      matchUndatedSections . sectionDiffsToIntermediateDiff . uncurry serializeTwoSectionsIntoOneDiff $ sections
+    fmap (uncurry (getDiffBy similarLedgerLine) . both lines . sectionDiffToPair) $
+      matchFillerRanges . uncurry serializeTwoSectionsIntoOneDiff $ sections
 
 -- | Runs a chronological diff on two Ledger files.
 --

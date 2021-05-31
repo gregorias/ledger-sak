@@ -2,9 +2,12 @@ module Test.LedgerDiff (
   tests,
 ) where
 
-import LedgerDiff (diffLedgerText)
+import Data.Algorithm.Diff (
+  PolyDiff (Both, First, Second),
+ )
+import LedgerDiff (diffLedgerText, matchFillerRanges)
 import NeatInterpolation (trimming)
-import Relude
+import Relude hiding (First)
 import Test.Hspec (SpecWith, describe, it)
 import Test.Hspec.Expectations.Pretty (shouldBe)
 
@@ -134,3 +137,32 @@ tests = do
                         > P 2021/04/04 1.00 CHF USD
                         |]
         diffLedgerText orig dest `shouldBe` Right edDiff
+    describe "matchFillerRanges" $ do
+      it "matches 0" $ do
+        let result =
+              matchFillerRanges @((Maybe Int, Text))
+                [ First (Nothing, "l0")
+                , Second (Nothing, "r0")
+                , Second (Just 2, "2")
+                , Second (Nothing, "r1")
+                , First (Just 3, "3")
+                , Second (Just 4, "4")
+                ]
+        result
+          `shouldBe` [ Second "r0"
+                     , Second "2"
+                     , Both "l0" "r1"
+                     , First "3"
+                     , Second "4"
+                     ]
+      it "matches 1" $ do
+        let result =
+              matchFillerRanges @((Maybe Int, Text))
+                [ First (Just 9, "9")
+                , First (Nothing, "l0")
+                , Second (Just 10, "10")
+                , Second (Nothing, "r0")
+                , Both (Just 14, "14") (Just 14, "14")
+                ]
+        result
+          `shouldBe` [First "9", Second "10", Both "l0" "r0", Both "14" "14"]
