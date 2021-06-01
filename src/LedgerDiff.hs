@@ -13,9 +13,7 @@ module LedgerDiff (
   SectionChunk (..),
   SmartPiece (..),
   matchFillerRanges,
-  smartlyDiffSectionInternals,
   groupChunksIntoSections,
-  diffPairedDatedSections,
 ) where
 
 import Data.Algorithm.Diff (
@@ -73,9 +71,9 @@ data Section
   | DatedSection Day [SectionChunk]
   deriving stock (Eq, Show)
 
-sectionToText :: Section -> Text
-sectionToText (UndatedSection us) = us
-sectionToText (DatedSection _ scs) = foldMap sectionChunkToText scs
+sectionToSectionChunks :: Section -> [SectionChunk]
+sectionToSectionChunks (UndatedSection t) = one $ UndatedSectionChunk t
+sectionToSectionChunks (DatedSection _ cs) = cs
 
 -- | Groups together consecutive undated chunks and same-dated chunks.
 --
@@ -259,14 +257,9 @@ matchFillerRanges ((Both l r) : xs) =
 generateAVimCompatibleDiff :: [[Diff Text]] -> [EdHunk]
 generateAVimCompatibleDiff = groupedDiffToEdHunks . one . fold
 
-diffPairedDatedSections :: [SectionChunk] -> [SectionChunk] -> [Diff Text]
-diffPairedDatedSections lsc rsc = fold $ smartlyDiffText <$> matchedSectionChunks
+diffPairedSections :: [SectionChunk] -> [SectionChunk] -> [Diff SectionChunk]
+diffPairedSections = getDiffBy similarChunk
  where
-  matchedSectionChunks :: [Diff Text] = matchFillerRanges $ getDiffBy similarChunk lsc rsc
-  smartlyDiffText :: Diff Text -> [Diff Text]
-  smartlyDiffText (First l) = First <$> lines l
-  smartlyDiffText (Second r) = Second <$> lines r
-  smartlyDiffText (Both ls rs) = getDiffBy similarLedgerLine (lines ls) (lines rs)
   similarChunk (UndatedSectionChunk _) _ = False
   similarChunk (DatedSectionChunk _) (UndatedSectionChunk _) = False
   similarChunk (DatedSectionChunk l) (DatedSectionChunk r) =
@@ -277,13 +270,24 @@ diffPairedDatedSections lsc rsc = fold $ smartlyDiffText <$> matchedSectionChunk
 
     hasBoth = any isBoth
 
-smartlyDiffSectionInternals :: Diff Section -> [Diff Text]
-smartlyDiffSectionInternals (First l) = First <$> lines (sectionToText l)
-smartlyDiffSectionInternals (Second r) = Second <$> lines (sectionToText r)
-smartlyDiffSectionInternals (Both l r) =
-  case (l, r) of
-    (DatedSection _ ls, DatedSection _ rs) -> diffPairedDatedSections ls rs
-    (ls, rs) -> getDiffBy similarLedgerLine (lines $ sectionToText ls) (lines $ sectionToText rs)
+smartlyDiffText :: Diff Text -> [Diff Text]
+smartlyDiffText (First l) = First <$> lines l
+smartlyDiffText (Second r) = Second <$> lines r
+smartlyDiffText (Both ls rs) = getDiffBy similarLedgerLine (lines ls) (lines rs)
+
+matchInternalChunks :: [Diff Section] -> [Diff SectionChunk]
+matchInternalChunks [] = []
+matchInternalChunks (First l : xs) =
+  (First <$> sectionToSectionChunks l)
+    <> matchInternalChunks xs
+matchInternalChunks (Second l : xs) =
+  (Second <$> sectionToSectionChunks l)
+    <> matchInternalChunks xs
+matchInternalChunks (Both l r : xs) =
+  diffPairedSections lc rc
+    <> matchInternalChunks xs
+ where
+  (lc, rc) = both sectionToSectionChunks (l, r)
 
 -- | Runs a chronological diff on two Ledger files.
 --
@@ -291,14 +295,16 @@ smartlyDiffSectionInternals (Both l r) =
 diffLedger :: Journal -> Journal -> Text
 diffLedger (Journal origChunks) (Journal destChunks) =
   edHunksToEdDiff $
-    generateAVimCompatibleDiff matchedSectionAndChunks
+    generateAVimCompatibleDiff $
+      smartlyDiffText <$> matchedSectionChunksWithFillerLines
  where
   sections :: ([Section], [Section]) =
     both groupChunksIntoSections (origChunks, destChunks)
-  fullyMatchedSections :: [Diff Section] =
-    matchFillerRanges . uncurry serializeTwoSectionsIntoOneDiff $ sections
-  matchedSectionAndChunks :: [[Diff Text]] =
-    smartlyDiffSectionInternals <$> fullyMatchedSections
+  sectionsMatchedByDate :: [Diff Section] =
+    uncurry serializeTwoSectionsIntoOneDiff sections
+  matchedSectionChunks :: [Diff SectionChunk] = matchInternalChunks sectionsMatchedByDate
+  matchedSectionChunksWithFillerLines :: [Diff Text] =
+    matchFillerRanges matchedSectionChunks
 
 -- | Runs a chronological diff on two Ledger files.
 --

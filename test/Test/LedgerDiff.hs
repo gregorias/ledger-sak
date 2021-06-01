@@ -3,13 +3,11 @@ module Test.LedgerDiff (
 ) where
 
 import Data.Algorithm.Diff (
-  Diff,
   PolyDiff (Both, First, Second),
  )
 import LedgerDiff (
   SectionChunk (..),
   diffLedgerText,
-  diffPairedDatedSections,
   matchFillerRanges,
  )
 import NeatInterpolation (trimming)
@@ -253,18 +251,18 @@ tests = do
             space = " "
             edDiff =
               [trimming|
-                        2a3,5
+                        2a3,10
                         >$space
                         > 2021-04-23 * VT trade
                         >     Assets:Investments:IB:VT              VT 91
-                        4c7,12
-                        < 2021-04-27 * AMZN Mktp DE, AMAZON.DE
-                        ---
+                        >$space
                         > 2021-04-27 * Coop
                         >     Assets:Liquid:BCGE                 CHF -6.75
                         >     Expenses:Gesundheit                   CHF 5.15
                         >     Expenses:Groceries:C                  CHF 1.60
-                        >$space
+                        4c12
+                        < 2021-04-27 * AMZN Mktp DE, AMAZON.DE
+                        ---
                         > 2021/04/27 * Amazon -- Stuff
                         7c15
                         <   Expenses:B                       CHF  63.50
@@ -316,33 +314,3 @@ tests = do
                      , Second "\n"
                      , Second vrContent
                      ]
-
-    describe "diffPairedDatedSection" $ do
-      it "Correctly diffs two dated sections" $ do
-        let left =
-              [ DatedSectionChunk
-                  [trimming|
-                          2021-04-23 * LAEDERACH CHOCOLAT.
-                            Assets:Liquid:BCGE CC      CHF -39.90
-                        |]
-              ]
-            right =
-              [ DatedSectionChunk
-                  [trimming|
-                          2021-04-23 * LAEDERACH CHOCOLAT.
-                            Assets:Liquid:BCGE CC      CHF -39.90|]
-              , UndatedSectionChunk "\n"
-              , DatedSectionChunk
-                  [trimming|
-                          2021-04-23 * VT trade
-                              Assets:Investments:IB:VT              VT 91
-                        |]
-              ]
-            result :: [Diff Text] =
-              [ Both "2021-04-23 * LAEDERACH CHOCOLAT." "2021-04-23 * LAEDERACH CHOCOLAT."
-              , Both "  Assets:Liquid:BCGE CC      CHF -39.90" "  Assets:Liquid:BCGE CC      CHF -39.90"
-              , Second ""
-              , Second "2021-04-23 * VT trade"
-              , Second "    Assets:Investments:IB:VT              VT 91"
-              ]
-        diffPairedDatedSections left right `shouldBe` result
