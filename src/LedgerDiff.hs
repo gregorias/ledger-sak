@@ -226,6 +226,7 @@ matchFillerRanges (p0@(First f0) : ps0)
           rest ->
             Both (getSpContent f0) (getSpContent s1) : matchFillerRanges rest
     (p1@(First f1) : ps1) -> case ps1 of
+      [] -> First (getSpContent f0) : matchFillerRanges ps0
       (First _ : _) -> First (getSpContent f0) : matchFillerRanges ps0
       (Both _ _ : _) -> First (getSpContent f0) : matchFillerRanges ps0
       (Second s2 : ps2) ->
@@ -236,7 +237,6 @@ matchFillerRanges (p0@(First f0) : ps0)
               First (getSpContent f0) : First (getSpContent f1) : matchFillerRanges ps1
             _ ->
               Both (getSpContent f0) (getSpContent s2) : matchFillerRanges (p1 : ps1)
-      [] -> [First (getSpContent f0)]
     ((Both l r) : ps1) ->
       First (getSpContent f0) : Both (getSpContent l) (getSpContent r) : matchFillerRanges ps1
     [] -> [First (getSpContent f0)]

@@ -6,6 +6,7 @@ import Data.Algorithm.Diff (
   PolyDiff (Both, First, Second),
  )
 import LedgerDiff (
+  SectionChunk (..),
   diffLedgerText,
   matchFillerRanges,
  )
@@ -170,3 +171,16 @@ tests = do
                 ]
         result
           `shouldBe` [First "9", Second "10", Both "l0" "r0", Both "14" "14"]
+
+      it "matches 2" $ do
+        let lscContent = "2021-04-23 * LAEDERACH CHOCOLAT.\n"
+            lsc = DatedSectionChunk lscContent
+            uc = UndatedSectionChunk "\n"
+            vrContent = "2021-04-23 * Trade\n"
+            vr = DatedSectionChunk vrContent
+            diffs = [Both lsc lsc, Second uc, Second vr]
+        matchFillerRanges diffs
+          `shouldBe` [ Both lscContent lscContent
+                     , Second "\n"
+                     , Second vrContent
+                     ]
