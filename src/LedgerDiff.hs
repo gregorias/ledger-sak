@@ -82,9 +82,9 @@ sectionToText (DatedSection _ scs) = foldMap sectionChunkToText scs
 --     , ChunkUndatedChunk (UndatedChunk "lo")
 --     , ChunkDatedChunk (DatedChunk (fromGregorian 2021 5 30) "2")]
 -- :}
--- [DatedSection 2021-05-30 [DatedSectionChunk "1yolo2"]]
+-- [DatedSection 2021-05-30 [DatedSectionChunk "1",UndatedSectionChunk "yolo",DatedSectionChunk "2"]]
 groupChunksIntoSections :: [Chunk] -> [Section]
-groupChunksIntoSections = groupDatedWithInterespersedUndated . groupUndated
+groupChunksIntoSections = groupDatedWithInterspersedUndated . groupUndated
  where
   groupUndated :: [Chunk] -> [Chunk]
   groupUndated [] = []
@@ -92,24 +92,32 @@ groupChunksIntoSections = groupDatedWithInterespersedUndated . groupUndated
     groupUndated (ChunkUndatedChunk (uc <> uc') : cs)
   groupUndated (x : xs) = x : groupUndated xs
 
-  groupDatedWithInterespersedUndated :: [Chunk] -> [Section]
-  groupDatedWithInterespersedUndated [] = []
-  groupDatedWithInterespersedUndated (ChunkUndatedChunk uc : hs) =
-    UndatedSection (getUndatedChunk uc) : groupDatedWithInterespersedUndated hs
-  groupDatedWithInterespersedUndated
-    ( (ChunkDatedChunk (DatedChunk d0 c0))
-        : rest@(ChunkDatedChunk (DatedChunk d1 c1) : hs)
-      )
-      | d0 == d1 = groupDatedWithInterespersedUndated $ ChunkDatedChunk (DatedChunk d0 $ c0 <> c1) : hs
-      | otherwise = DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
-  groupDatedWithInterespersedUndated
-    ( ChunkDatedChunk (DatedChunk d0 c0)
-        : rest@(ChunkUndatedChunk (UndatedChunk cu) : ChunkDatedChunk (DatedChunk d1 c1) : hs)
-      )
-      | d0 == d1 = groupDatedWithInterespersedUndated $ ChunkDatedChunk (DatedChunk d0 (c0 <> cu <> c1)) : hs
-      | otherwise = DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
-  groupDatedWithInterespersedUndated (ChunkDatedChunk (DatedChunk d0 c0) : rest) =
-    DatedSection d0 [DatedSectionChunk c0] : groupDatedWithInterespersedUndated rest
+  takeDate :: Day -> [Chunk] -> ([SectionChunk], [Chunk])
+  takeDate d cs = go [] cs
+   where
+    go :: [SectionChunk] -> [Chunk] -> ([SectionChunk], [Chunk])
+    go acc [] = (acc, [])
+    go acc cs'@(ChunkDatedChunk (DatedChunk d' content) : csrest)
+      | d == d' = go (acc <> [DatedSectionChunk content]) csrest
+      | otherwise = (acc, cs')
+    go
+      acc
+      cs'@( ChunkUndatedChunk (UndatedChunk content)
+              : ChunkDatedChunk (DatedChunk d' content')
+              : csrest
+            )
+        | d == d' = go (acc <> [UndatedSectionChunk content, DatedSectionChunk content']) csrest
+        | otherwise = (acc, cs')
+    go acc cs' = (acc, cs')
+
+  groupDatedWithInterspersedUndated :: [Chunk] -> [Section]
+  groupDatedWithInterspersedUndated [] = []
+  groupDatedWithInterspersedUndated (ChunkUndatedChunk uc : hs) =
+    UndatedSection (getUndatedChunk uc) : groupDatedWithInterspersedUndated hs
+  groupDatedWithInterspersedUndated
+    cs@((ChunkDatedChunk (DatedChunk d _)) : _) = DatedSection d sc : groupDatedWithInterspersedUndated rest
+     where
+      (sc, rest) = takeDate d cs
 
 -- | Serializes two lists into a diff list of sections
 --
