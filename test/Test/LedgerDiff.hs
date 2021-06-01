@@ -3,11 +3,13 @@ module Test.LedgerDiff (
 ) where
 
 import Data.Algorithm.Diff (
+  Diff,
   PolyDiff (Both, First, Second),
  )
 import LedgerDiff (
   SectionChunk (..),
   diffLedgerText,
+  diffPairedDatedSections,
   matchFillerRanges,
  )
 import NeatInterpolation (trimming)
@@ -141,6 +143,136 @@ tests = do
                         > P 2021/04/04 1.00 CHF USD
                         |]
         diffLedgerText orig dest `shouldBe` Right edDiff
+
+      it "Uses empty lines as buffers inside dated chunks" $ do
+        let orig =
+              [trimming|
+                        2021/04/01 firstl
+                          contentfirst
+
+                        2021/04/01 intermediaterubbish
+                          contentrubbish
+
+                        2021/04/01 secondl
+                          contentsecond
+                        |]
+            dest =
+              [trimming|
+                        2021/04/01 firstr
+                          contentfirst
+
+                        2021/04/01 secondr
+                          contentsecond
+                        |]
+            space = " "
+            edDiff =
+              [trimming|
+                        1c1
+                        < 2021/04/01 firstl
+                        ---
+                        > 2021/04/01 firstr
+                        3,5d2
+                        <$space
+                        < 2021/04/01 intermediaterubbish
+                        <   contentrubbish
+                        7c4
+                        < 2021/04/01 secondl
+                        ---
+                        > 2021/04/01 secondr
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff
+
+      it "Correctly diffs a file 0" $ do
+        let orig =
+              [trimming|
+                        2021-04-27 * AMZN Mktp DE, AMAZON.DE
+                          Assets:Liquid:BCGE CC            CHF -64.60
+                          Expenses:Financial Services        CHF 1.10
+                          Expenses:B                       CHF  63.50
+                        |]
+            dest =
+              [trimming|
+                        2021-04-27 * Coop
+                            Assets:Liquid:BCGE                 CHF -6.75
+                            Expenses:Gesundheit                   CHF 5.15
+                            Expenses:Groceries:C                  CHF 1.60
+
+                        2021/04/27 * Amazon -- Stuff
+                            Assets:Liquid:BCGE CC            CHF -64.60
+                            Expenses:Financial Services        CHF 1.10
+                            Expenses:Haushalt
+                        |]
+            space = " "
+            edDiff =
+              [trimming|
+                        1c1,6
+                        < 2021-04-27 * AMZN Mktp DE, AMAZON.DE
+                        ---
+                        > 2021-04-27 * Coop
+                        >     Assets:Liquid:BCGE                 CHF -6.75
+                        >     Expenses:Gesundheit                   CHF 5.15
+                        >     Expenses:Groceries:C                  CHF 1.60
+                        >$space
+                        > 2021/04/27 * Amazon -- Stuff
+                        4c9
+                        <   Expenses:B                       CHF  63.50
+                        ---
+                        >     Expenses:Haushalt
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff
+
+      it "Correctly diffs a file 1" $ do
+        let orig =
+              [trimming|
+                        2021-04-23 * LAEDERACH CHOCOLAT.
+                            Assets:Liquid:BCGE CC      CHF -39.90
+
+                        2021-04-27 * AMZN Mktp DE, AMAZON.DE
+                          Assets:Liquid:BCGE CC            CHF -64.60
+                          Expenses:Financial Services        CHF 1.10
+                          Expenses:B                       CHF  63.50
+                        |]
+            dest =
+              [trimming|
+                        2021-04-23 * LAEDERACH CHOCOLAT.
+                            Assets:Liquid:BCGE CC      CHF -39.90
+
+                        2021-04-23 * VT trade
+                            Assets:Investments:IB:VT              VT 91
+
+                        2021-04-27 * Coop
+                            Assets:Liquid:BCGE                 CHF -6.75
+                            Expenses:Gesundheit                   CHF 5.15
+                            Expenses:Groceries:C                  CHF 1.60
+
+                        2021/04/27 * Amazon -- Stuff
+                            Assets:Liquid:BCGE CC            CHF -64.60
+                            Expenses:Financial Services        CHF 1.10
+                            Expenses:Haushalt
+                        |]
+            space = " "
+            edDiff =
+              [trimming|
+                        2a3,5
+                        >$space
+                        > 2021-04-23 * VT trade
+                        >     Assets:Investments:IB:VT              VT 91
+                        4c7,12
+                        < 2021-04-27 * AMZN Mktp DE, AMAZON.DE
+                        ---
+                        > 2021-04-27 * Coop
+                        >     Assets:Liquid:BCGE                 CHF -6.75
+                        >     Expenses:Gesundheit                   CHF 5.15
+                        >     Expenses:Groceries:C                  CHF 1.60
+                        >$space
+                        > 2021/04/27 * Amazon -- Stuff
+                        7c15
+                        <   Expenses:B                       CHF  63.50
+                        ---
+                        >     Expenses:Haushalt
+                        |]
+        diffLedgerText orig dest `shouldBe` Right edDiff
+
     describe "matchFillerRanges" $ do
       it "matches 0" $ do
         let result =
@@ -184,3 +316,33 @@ tests = do
                      , Second "\n"
                      , Second vrContent
                      ]
+
+    describe "diffPairedDatedSection" $ do
+      it "Correctly diffs two dated sections" $ do
+        let left =
+              [ DatedSectionChunk
+                  [trimming|
+                          2021-04-23 * LAEDERACH CHOCOLAT.
+                            Assets:Liquid:BCGE CC      CHF -39.90
+                        |]
+              ]
+            right =
+              [ DatedSectionChunk
+                  [trimming|
+                          2021-04-23 * LAEDERACH CHOCOLAT.
+                            Assets:Liquid:BCGE CC      CHF -39.90|]
+              , UndatedSectionChunk "\n"
+              , DatedSectionChunk
+                  [trimming|
+                          2021-04-23 * VT trade
+                              Assets:Investments:IB:VT              VT 91
+                        |]
+              ]
+            result :: [Diff Text] =
+              [ Both "2021-04-23 * LAEDERACH CHOCOLAT." "2021-04-23 * LAEDERACH CHOCOLAT."
+              , Both "  Assets:Liquid:BCGE CC      CHF -39.90" "  Assets:Liquid:BCGE CC      CHF -39.90"
+              , Second ""
+              , Second "2021-04-23 * VT trade"
+              , Second "    Assets:Investments:IB:VT              VT 91"
+              ]
+        diffPairedDatedSections left right `shouldBe` result

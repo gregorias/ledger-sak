@@ -13,6 +13,9 @@ module LedgerDiff (
   SectionChunk (..),
   SmartPiece (..),
   matchFillerRanges,
+  smartlyDiffSectionInternals,
+  groupChunksIntoSections,
+  diffPairedDatedSections,
 ) where
 
 import Data.Algorithm.Diff (
@@ -256,10 +259,31 @@ matchFillerRanges ((Both l r) : xs) =
 generateAVimCompatibleDiff :: [[Diff Text]] -> [EdHunk]
 generateAVimCompatibleDiff = groupedDiffToEdHunks . one . fold
 
-sectionDiffToPair :: Diff Section -> (Text, Text)
-sectionDiffToPair (First s) = (sectionToText s, "")
-sectionDiffToPair (Second s) = ("", sectionToText s)
-sectionDiffToPair (Both l r) = (sectionToText l, sectionToText r)
+diffPairedDatedSections :: [SectionChunk] -> [SectionChunk] -> [Diff Text]
+diffPairedDatedSections lsc rsc = fold $ smartlyDiffText <$> matchedSectionChunks
+ where
+  matchedSectionChunks :: [Diff Text] = matchFillerRanges $ getDiffBy similarChunk lsc rsc
+  smartlyDiffText :: Diff Text -> [Diff Text]
+  smartlyDiffText (First l) = First <$> lines l
+  smartlyDiffText (Second r) = Second <$> lines r
+  smartlyDiffText (Both ls rs) = getDiffBy similarLedgerLine (lines ls) (lines rs)
+  similarChunk (UndatedSectionChunk _) _ = False
+  similarChunk (DatedSectionChunk _) (UndatedSectionChunk _) = False
+  similarChunk (DatedSectionChunk l) (DatedSectionChunk r) =
+    hasBoth $ getDiffBy similarLedgerLine (lines l) (lines r)
+   where
+    isBoth (Both _ _) = True
+    isBoth _ = False
+
+    hasBoth = any isBoth
+
+smartlyDiffSectionInternals :: Diff Section -> [Diff Text]
+smartlyDiffSectionInternals (First l) = First <$> lines (sectionToText l)
+smartlyDiffSectionInternals (Second r) = Second <$> lines (sectionToText r)
+smartlyDiffSectionInternals (Both l r) =
+  case (l, r) of
+    (DatedSection _ ls, DatedSection _ rs) -> diffPairedDatedSections ls rs
+    (ls, rs) -> getDiffBy similarLedgerLine (lines $ sectionToText ls) (lines $ sectionToText rs)
 
 -- | Runs a chronological diff on two Ledger files.
 --
@@ -267,14 +291,14 @@ sectionDiffToPair (Both l r) = (sectionToText l, sectionToText r)
 diffLedger :: Journal -> Journal -> Text
 diffLedger (Journal origChunks) (Journal destChunks) =
   edHunksToEdDiff $
-    generateAVimCompatibleDiff diffsGroupedByDate
+    generateAVimCompatibleDiff matchedSectionAndChunks
  where
   sections :: ([Section], [Section]) =
     both groupChunksIntoSections (origChunks, destChunks)
   fullyMatchedSections :: [Diff Section] =
     matchFillerRanges . uncurry serializeTwoSectionsIntoOneDiff $ sections
-  diffsGroupedByDate :: [[Diff Text]] =
-    uncurry (getDiffBy similarLedgerLine) . both lines . sectionDiffToPair <$> fullyMatchedSections
+  matchedSectionAndChunks :: [[Diff Text]] =
+    smartlyDiffSectionInternals <$> fullyMatchedSections
 
 -- | Runs a chronological diff on two Ledger files.
 --
