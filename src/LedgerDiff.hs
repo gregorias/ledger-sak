@@ -7,6 +7,9 @@
 module LedgerDiff (
   diffLedgerText,
   diffLedgerIO,
+
+  -- * Internal functions exposed for testing
+  Section (..),
   SectionChunk (..),
   SmartPiece (..),
   matchFillerRanges,
@@ -65,7 +68,7 @@ sectionChunkToText (UndatedSectionChunk content) = content
 data Section
   = UndatedSection Text
   | DatedSection Day [SectionChunk]
-  deriving stock (Show)
+  deriving stock (Eq, Show)
 
 sectionToText :: Section -> Text
 sectionToText (UndatedSection us) = us
@@ -186,6 +189,14 @@ instance SmartPiece Section where
   getSpContent = id
   getSpStatus (UndatedSection _) = Filler
   getSpStatus (DatedSection d _) = Ordered d
+
+instance SmartPiece SectionChunk where
+  type SmartPieceOrder SectionChunk = Int
+  type SmartPieceContent SectionChunk = Text
+
+  getSpContent = sectionChunkToText
+  getSpStatus (UndatedSectionChunk _) = Filler
+  getSpStatus (DatedSectionChunk _) = Ordered 0
 
 instance SmartPiece (Maybe Int, Text) where
   type SmartPieceOrder (Maybe Int, Text) = Int
