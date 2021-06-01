@@ -5,7 +5,10 @@ module Test.LedgerDiff (
 import Data.Algorithm.Diff (
   PolyDiff (Both, First, Second),
  )
-import LedgerDiff (diffLedgerText, matchFillerRanges)
+import LedgerDiff (
+  diffLedgerText,
+  matchFillerRanges,
+ )
 import NeatInterpolation (trimming)
 import Relude hiding (First)
 import Test.Hspec (SpecWith, describe, it)
@@ -140,7 +143,7 @@ tests = do
     describe "matchFillerRanges" $ do
       it "matches 0" $ do
         let result =
-              matchFillerRanges @((Maybe Int, Text))
+              matchFillerRanges @(Maybe Int, Text)
                 [ First (Nothing, "l0")
                 , Second (Nothing, "r0")
                 , Second (Just 2, "2")
@@ -155,9 +158,10 @@ tests = do
                      , First "3"
                      , Second "4"
                      ]
+
       it "matches 1" $ do
         let result =
-              matchFillerRanges @((Maybe Int, Text))
+              matchFillerRanges @(Maybe Int, Text)
                 [ First (Just 9, "9")
                 , First (Nothing, "l0")
                 , Second (Just 10, "10")

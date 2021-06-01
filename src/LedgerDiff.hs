@@ -7,6 +7,7 @@
 module LedgerDiff (
   diffLedgerText,
   diffLedgerIO,
+  SectionChunk (..),
   SmartPiece (..),
   matchFillerRanges,
 ) where
@@ -54,7 +55,7 @@ similarLedgerLine l r = process l == process r
 data SectionChunk
   = DatedSectionChunk Text
   | UndatedSectionChunk Text
-  deriving stock (Show)
+  deriving stock (Eq, Show)
 
 sectionChunkToText :: SectionChunk -> Text
 sectionChunkToText (DatedSectionChunk content) = content
