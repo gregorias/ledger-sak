@@ -7,6 +7,7 @@ import Data.Algorithm.Diff (
  )
 import LedgerDiff (
   SectionChunk (..),
+  SmartPieceStatus (..),
   diffLedgerText,
   matchFillerRanges,
  )
@@ -274,13 +275,13 @@ tests = do
     describe "matchFillerRanges" $ do
       it "matches 0" $ do
         let result =
-              matchFillerRanges @(Maybe Int, Text)
-                [ First (Nothing, "l0")
-                , Second (Nothing, "r0")
-                , Second (Just 2, "2")
-                , Second (Nothing, "r1")
-                , First (Just 3, "3")
-                , Second (Just 4, "4")
+              matchFillerRanges @(SmartPieceStatus, Text)
+                [ First (Filler, "l0")
+                , Second (Filler, "r0")
+                , Second (Meat, "2")
+                , Second (Filler, "r1")
+                , First (Meat, "3")
+                , Second (Meat, "4")
                 ]
         result
           `shouldBe` [ Second "r0"
@@ -292,12 +293,12 @@ tests = do
 
       it "matches 1" $ do
         let result =
-              matchFillerRanges @(Maybe Int, Text)
-                [ First (Just 9, "9")
-                , First (Nothing, "l0")
-                , Second (Just 10, "10")
-                , Second (Nothing, "r0")
-                , Both (Just 14, "14") (Just 14, "14")
+              matchFillerRanges @(SmartPieceStatus, Text)
+                [ First (Meat, "9")
+                , First (Filler, "l0")
+                , Second (Meat, "10")
+                , Second (Filler, "r0")
+                , Both (Meat, "14") (Meat, "14")
                 ]
         result
           `shouldBe` [First "9", Second "10", Both "l0" "r0", Both "14" "14"]

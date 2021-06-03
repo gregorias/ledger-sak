@@ -32,13 +32,12 @@ data SmartPieceImpl
   deriving stock (Show)
 
 instance SmartPiece SmartPieceImpl where
-  type SmartPieceOrder SmartPieceImpl = Int
   type SmartPieceContent SmartPieceImpl = Text
 
   getSpContent (SpiFiller t) = t
   getSpContent (SpiContent t) = t
   getSpStatus (SpiFiller _) = Filler
-  getSpStatus (SpiContent _) = Ordered 0
+  getSpStatus (SpiContent _) = Meat
 
 diffToTwoFiles :: [Diff p] -> ([p], [p])
 diffToTwoFiles [] = ([], [])

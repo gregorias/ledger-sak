@@ -169,45 +169,40 @@ serializeTwoSectionsIntoOneDiff (l@(UndatedSection _) : ls) rs =
 serializeTwoSectionsIntoOneDiff [] (r : rs) = Second r : serializeTwoSectionsIntoOneDiff [] rs
 serializeTwoSectionsIntoOneDiff ls (r@(UndatedSection _) : rs) = Second r : serializeTwoSectionsIntoOneDiff ls rs
 
-data SmartPieceStatus d
+data SmartPieceStatus
   = Filler
-  | Ordered d
+  | Meat
   deriving stock (Eq)
 
 class SmartPiece p where
-  type SmartPieceOrder p
   type SmartPieceContent p
 
   getSpContent :: p -> SmartPieceContent p
-  getSpStatus :: p -> SmartPieceStatus (SmartPieceOrder p)
+  getSpStatus :: p -> SmartPieceStatus
   isSpOrdered :: p -> Bool
   isSpOrdered p = case getSpStatus p of
     Filler -> False
-    (Ordered _) -> True
+    Meat -> True
 
 instance SmartPiece Section where
-  type SmartPieceOrder Section = Day
   type SmartPieceContent Section = Section
 
   getSpContent = id
   getSpStatus (UndatedSection _) = Filler
-  getSpStatus (DatedSection d _) = Ordered d
+  getSpStatus (DatedSection _ _) = Meat
 
 instance SmartPiece SectionChunk where
-  type SmartPieceOrder SectionChunk = Int
   type SmartPieceContent SectionChunk = Text
 
   getSpContent = sectionChunkToText
   getSpStatus (UndatedSectionChunk _) = Filler
-  getSpStatus (DatedSectionChunk _) = Ordered 0
+  getSpStatus (DatedSectionChunk _) = Meat
 
-instance SmartPiece (Maybe Int, Text) where
-  type SmartPieceOrder (Maybe Int, Text) = Int
-  type SmartPieceContent (Maybe Int, Text) = Text
+instance SmartPiece (SmartPieceStatus, Text) where
+  type SmartPieceContent (SmartPieceStatus, Text) = Text
 
   getSpContent = snd
-  getSpStatus (Nothing, _) = Filler
-  getSpStatus (Just d, _) = Ordered d
+  getSpStatus = fst
 
 -- | Finds a good matching of filler ranges.
 --
