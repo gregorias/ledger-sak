@@ -24,6 +24,16 @@ fills a different niche. hledger-diff parses and interprets the content of the
 ledger journal and outputs missing transactions, while ledgerdiff does mostly
 textual parsing and outputs a textual diff.
 
+#### Screenshots
+
+##### Without ledgerdiff
+
+![Without ledgerdiff](doc/without-ledgerdiff.png?raw=True "Without ledgerdiff")
+
+##### With ledgerdiff
+
+![With ledgerdiff](doc/with-ledgerdiff.png?raw=True "With ledgerdiff")
+
 #### Caveats
 
 Unfortunately, the tool is not fully accurate with its chronological diffing
