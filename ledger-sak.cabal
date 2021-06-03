@@ -83,6 +83,7 @@ test-suite ledger-sak-test
   main-is: Spec.hs
   other-modules:
       Test.LedgerDiff
+      Test.LedgerDiffQC
       Test.Parse
       Paths_ledger_sak
   hs-source-dirs:
@@ -92,10 +93,12 @@ test-suite ledger-sak-test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -main-is Spec -Wunused-packages
   build-depends:
       Diff
+    , QuickCheck
     , base >=4.13 && <5
     , hspec
     , hspec-expectations-pretty-diff
     , ledger-sak
+    , lens
     , neat-interpolation
     , relude
     , time

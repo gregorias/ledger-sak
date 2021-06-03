@@ -9,9 +9,11 @@ module LedgerDiff (
   diffLedgerIO,
 
   -- * Internal functions exposed for testing
+  both,
   Section (..),
   SectionChunk (..),
   SmartPiece (..),
+  SmartPieceStatus (..),
   matchFillerRanges,
   groupChunksIntoSections,
 ) where
@@ -237,7 +239,7 @@ matchFillerRanges (p0@(First f0) : ps0)
             (First _ : _) ->
               First (getSpContent f0) : First (getSpContent f1) : matchFillerRanges ps1
             _ ->
-              Both (getSpContent f0) (getSpContent s2) : matchFillerRanges (p1 : ps1)
+              Both (getSpContent f0) (getSpContent s2) : matchFillerRanges (p1 : ps2)
     ((Both l r) : ps1) ->
       First (getSpContent f0) : Both (getSpContent l) (getSpContent r) : matchFillerRanges ps1
     [] -> [First (getSpContent f0)]

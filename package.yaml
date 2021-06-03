@@ -81,8 +81,10 @@ tests:
     - hspec
     - hspec-expectations-pretty-diff
     - ledger-sak
+    - lens
     - neat-interpolation
     - time
+    - QuickCheck
 
   doctest:
     main:                DocTest.hs
