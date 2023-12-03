@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedLists #-}
+
 -- | This module handles transforming diffs into ed-style diff files.
 module Ed (
   EdHunk,
@@ -11,7 +13,7 @@ import Data.Algorithm.Diff (
  )
 import Data.List.NonEmpty (groupBy)
 import Data.Sequence (Seq (..))
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Relude hiding (First)
 
 newtype EdHunkAppend = EdHunkAppend
@@ -101,13 +103,18 @@ printHunkHead
 -- "< 000\n< 111"
 printHunkBody :: EdHunkType -> Text
 printHunkBody (EdHunkTypeAppend (EdHunkAppend as)) =
-  T.intercalate "\n" . toList $
-    ("> " <>) <$> as
+  T.intercalate "\n"
+    . toList
+    $ ("> " <>)
+    <$> as
 printHunkBody (EdHunkTypeDelete (EdHunkDelete ds)) =
-  T.intercalate "\n" . toList $
-    ("< " <>) <$> ds
+  T.intercalate "\n"
+    . toList
+    $ ("< " <>)
+    <$> ds
 printHunkBody (EdHunkTypeChange (EdHunkChange ds as)) =
-  printHunkBody (EdHunkTypeDelete (EdHunkDelete ds)) <> "\n"
+  printHunkBody (EdHunkTypeDelete (EdHunkDelete ds))
+    <> "\n"
     <> "---\n"
     <> printHunkBody (EdHunkTypeAppend (EdHunkAppend as))
 
@@ -153,7 +160,7 @@ diffToEdHunks' fp =
   groupedDiffsToWorkItem ::
     (Foldable t) =>
     t (Diff Text) ->
-    -- | the offset and changes
+    -- \| the offset and changes
     (FilePos, Seq Text, Seq Text)
   groupedDiffsToWorkItem = foldl' go' (mempty, [], [])
    where
@@ -166,8 +173,9 @@ diffToEdHunks' fp =
   wiToEdHunkType ([], seconds) = return . EdHunkTypeAppend $ EdHunkAppend (fromList . toList $ seconds)
   wiToEdHunkType (firsts, []) = return . EdHunkTypeDelete $ EdHunkDelete (fromList . toList $ firsts)
   wiToEdHunkType (firsts, seconds) =
-    return . EdHunkTypeChange $
-      EdHunkChange
+    return
+      . EdHunkTypeChange
+      $ EdHunkChange
         (fromList . toList $ firsts)
         (fromList . toList $ seconds)
 

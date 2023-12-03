@@ -1,8 +1,10 @@
 module LedgerDiffMain (main) where
 
-import qualified Data.Text.IO as T
+import Data.Text.IO qualified as T
+import Data.Version (showVersion)
 import LedgerDiff (diffLedgerIO)
-import Options.Applicative (Parser, execParser, fullDesc, header, helper, info, metavar, progDesc, strArgument)
+import Options.Applicative (Parser, execParser, fullDesc, header, helper, info, metavar, progDesc, simpleVersioner, strArgument)
+import Paths_ledger_sak (version)
 import Relude
 
 data FilePaths = FilePaths
@@ -30,7 +32,7 @@ main = do
  where
   opts =
     info
-      (filePathsP <**> helper)
+      (filePathsP <**> helper <**> simpleVersioner (showVersion version))
       ( fullDesc
           <> progDesc "Runs a smart chronological diff on two Ledger files."
           <> header "ledgerdiff"
