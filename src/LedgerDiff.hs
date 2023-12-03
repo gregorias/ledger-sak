@@ -317,6 +317,6 @@ diffLedgerText orig dest = do
 -- Outputs an ed-style diff.
 diffLedgerIO :: FilePath -> FilePath -> IO (Either Text Text)
 diffLedgerIO original new = do
-  originalContent <- readFileText original
-  newContent <- readFileText new
+  originalContent <- decodeUtf8 <$> readFileBS original
+  newContent <- decodeUtf8 <$> readFileBS new
   return $ diffLedgerText originalContent newContent
